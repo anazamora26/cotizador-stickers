@@ -1,0 +1,166 @@
+@import "tailwindcss";
+
+@theme inline {
+  --radius-sm: calc(var(--radius) - 4px);
+  --radius-md: calc(var(--radius) - 2px);
+  --radius-lg: var(--radius);
+  --radius-xl: calc(var(--radius) + 4px);
+  --radius-2xl: calc(var(--radius) + 8px);
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --color-card: var(--card);
+  --color-card-foreground: var(--foreground);
+  --color-primary: var(--primary);
+  --color-primary-foreground: var(--primary-foreground);
+  --color-secondary: var(--secondary);
+  --color-secondary-foreground: var(--foreground);
+  --color-muted: var(--muted);
+  --color-muted-foreground: var(--muted-foreground);
+  --color-accent: var(--accent);
+  --color-accent-foreground: var(--primary-foreground);
+  --color-destructive: var(--destructive);
+  --color-destructive-foreground: var(--primary-foreground);
+  --color-border: var(--border);
+  --color-input: var(--input);
+  --color-ring: var(--ring);
+  --font-sans: "Space Grotesk", ui-sans-serif, system-ui, sans-serif;
+  --font-mono: "JetBrains Mono", ui-monospace, monospace;
+}
+
+:root {
+  --radius: 0.9rem;
+  --background: oklch(0.938 0.006 236.5);
+  --lienzo: oklch(0.931 0.008 240);
+  --foreground: oklch(0.278 0.031 262.5);
+  --primary: oklch(0.673 0.088 226.9);
+  --primary-foreground: oklch(0.985 0 0);
+  --secondary: oklch(0.955 0.005 240);
+  --muted: oklch(0.93 0.006 240);
+  --muted-foreground: oklch(0.52 0.02 262);
+  --accent: oklch(0.673 0.088 226.9);
+  --destructive: oklch(0.708 0.16 20.5);
+  --border: oklch(0.878 0.008 240);
+  --input: oklch(0.9 0.008 240);
+  --ring: oklch(0.673 0.088 226.9);
+
+  --cian: #4b9cc1;
+  --esmeralda: #21a07d;
+  --coral: #ff7272;
+  --ambar: #f2b544;
+  --luz: rgba(255, 255, 255, 0.95);
+  --sombra: rgba(147, 163, 177, 0.55);
+}
+
+@layer base {
+  * {
+    border-color: var(--color-border);
+  }
+  body {
+    background-color: var(--color-background);
+    color: var(--color-foreground);
+    font-family: var(--font-sans);
+  }
+}
+
+.neu-raised {
+  background: var(--background);
+  box-shadow: 6px 6px 14px var(--sombra), -6px -6px 14px var(--luz);
+}
+
+.neu-inset {
+  background: var(--lienzo);
+  box-shadow: inset 4px 4px 9px var(--sombra), inset -4px -4px 9px var(--luz);
+}
+
+.neu-chip {
+  background: var(--background);
+  box-shadow: 4px 4px 9px var(--sombra), -4px -4px 9px var(--luz);
+}
+
+.neu-card {
+  border-radius: 1.4rem;
+  background: var(--background);
+  overflow: hidden;
+  box-shadow: 9px 9px 20px var(--sombra), -9px -9px 20px var(--luz);
+}
+
+.barra-titulo {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  padding: 0.6rem 1rem;
+  border-bottom: 1px solid color-mix(in oklab, var(--foreground) 12%, transparent);
+  background: linear-gradient(
+    180deg,
+    color-mix(in oklab, var(--luz) 85%, transparent),
+    color-mix(in oklab, var(--background) 92%, transparent)
+  );
+}
+
+.punto {
+  width: 0.62rem;
+  height: 0.62rem;
+  border-radius: 999px;
+  display: block;
+  box-shadow: inset 0 -1px 2px rgba(0, 0, 0, 0.18);
+}
+
+.campo {
+  width: 100%;
+  border-radius: 0.9rem;
+  padding: 0.65rem 0.9rem;
+  font-size: 0.9rem;
+  color: var(--foreground);
+  background: var(--lienzo);
+  box-shadow: inset 4px 4px 9px var(--sombra), inset -4px -4px 9px var(--luz);
+  outline: none;
+  transition: box-shadow 0.15s ease;
+}
+
+.campo:focus {
+  box-shadow: inset 3px 3px 7px var(--sombra), inset -3px -3px 7px var(--luz),
+    0 0 0 2px color-mix(in oklab, var(--cian) 55%, transparent);
+}
+
+.etiqueta {
+  display: block;
+  margin-bottom: 0.35rem;
+  font-family: var(--font-mono);
+  font-size: 0.66rem;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: color-mix(in oklab, var(--foreground) 65%, transparent);
+}
+
+.btn-neu {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.5rem;
+  border-radius: 0.95rem;
+  padding: 0.7rem 1.1rem;
+  font-size: 0.875rem;
+  font-weight: 600;
+  color: var(--foreground);
+  background: var(--background);
+  box-shadow: 5px 5px 12px var(--sombra), -5px -5px 12px var(--luz);
+  transition: box-shadow 0.15s ease, transform 0.15s ease;
+}
+
+.btn-neu:hover {
+  transform: translateY(-1px);
+}
+
+.btn-neu:active {
+  box-shadow: inset 4px 4px 9px var(--sombra), inset -4px -4px 9px var(--luz);
+  transform: translateY(0);
+}
+
+.btn-cian {
+  color: #ffffff;
+  background: linear-gradient(145deg, #5aa9cd, #3f8db2);
+}
+
+.btn-coral {
+  color: #ffffff;
+}
