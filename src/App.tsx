@@ -47,7 +47,7 @@ export default function App() {
       <Navegacion />
 
       <div className="mx-auto mt-8 grid w-full max-w-6xl gap-6 px-4 lg:grid-cols-[1.05fr_0.95fr]">
-        <TarjetaRetro titulo="Datos del trabajo">
+        <TarjetaRetro titulo="Configuración del Pedido — Taller UTP">
           <div className="grid gap-4">
             <div>
               <label className="etiqueta" htmlFor="ref">
@@ -246,7 +246,7 @@ export default function App() {
 
                 <div className="flex flex-wrap gap-3 print:hidden">
                   <button className="btn-neu btn-cian flex-1" onClick={copiar}>
-                    {copiado ? "¡Resumen copiado!" : "Copiar resumen para WhatsApp"}
+                    {copiado ? "¡Resumen copiado!" : "📲 Enviar Cotización por WhatsApp"}
                   </button>
                   <button className="btn-neu" onClick={() => window.print()}>
                     Descargar PDF / Imprimir
