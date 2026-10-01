@@ -244,6 +244,14 @@ export default function App() {
                   </div>
                 </div>
 
+                {cotizacion.cantidad >= 200 && (
+                  <div className="neu-inset rounded-2xl p-3 text-center border border-[var(--esmeralda)]/40">
+                    <p className="font-mono text-xs font-semibold text-[var(--esmeralda)]">
+                      ✨ ¡Aplica tarifa preferencial por volumen (+200 uds)!
+                    </p>
+                  </div>
+                )}
+
                 <div className="flex flex-wrap gap-3 print:hidden">
                   <button className="btn-neu btn-cian flex-1" onClick={copiar}>
                     {copiado ? "¡Resumen copiado!" : "📲 Enviar Cotización por WhatsApp"}
