@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { Navegacion } from "./components/Navegacion";
 import { TarjetaRetro } from "./components/TarjetaRetro";
 import { PliegoSVG } from "./components/PliegoSVG";
@@ -9,13 +9,72 @@ import {
   materialActivo,
   useTaller,
 } from "./lib/cotizador";
+import { supabase } from "./lib/supabase";
 
 export default function App() {
   const { materiales, cotizacion } = useTaller();
   const [copiado, setCopiado] = useState(false);
+  const [guardando, setGuardando] = useState(false);
+  const [historial, setHistorial] = useState<any[]>([]);
 
   const material = materialActivo(materiales, cotizacion.materialId);
   const r = useMemo(() => calcular(cotizacion, material), [cotizacion, material]);
+
+  // 1. Cargar las cotizaciones guardadas en Supabase al iniciar
+  async function cargarCotizaciones() {
+    try {
+      const { data, error } = await supabase
+        .from("cotizaciones")
+        .select("*")
+        .order("created_at", { ascending: false });
+
+      if (error) {
+        console.error("Error al consultar Supabase:", error.message);
+      } else if (data) {
+        setHistorial(data);
+      }
+    } catch (err) {
+      console.error("Fallo inesperado al conectar con Supabase:", err);
+    }
+  }
+
+  useEffect(() => {
+    cargarCotizaciones();
+  }, []);
+
+  // 2. Guardar la cotización actual calculada en Supabase
+  async function guardarEnSupabase() {
+    if (!r.cabe) return;
+    setGuardando(true);
+    try {
+      const nuevaFila = {
+        referencia: cotizacion.referencia || "Sin título",
+        material_id: material.id,
+        ancho_cm: Number(cotizacion.anchoPieza),
+        alto_cm: Number(cotizacion.altoPieza),
+        forma: cotizacion.forma,
+        cantidad: Number(cotizacion.cantidad),
+        sangria_mm: Number(cotizacion.sangriaMm),
+        pliegos_requeridos: Number(r.pliegos),
+        desperdicio_pct: Number(r.desperdicio.toFixed(1)),
+        costo_produccion: Number(r.costoTotal),
+        precio_final: Number(r.precioFinal),
+      };
+
+      const { error } = await supabase.from("cotizaciones").insert([nuevaFila]);
+
+      if (error) {
+        alert("Error al guardar: " + error.message);
+      } else {
+        alert("¡Cotización guardada exitosamente en Supabase!");
+        cargarCotizaciones(); // Actualiza el historial en pantalla
+      }
+    } catch (err) {
+      console.error(err);
+    } finally {
+      setGuardando(false);
+    }
+  }
 
   const resumen = [
     `*Cotización CotizaSticker*`,
@@ -47,7 +106,7 @@ export default function App() {
       <Navegacion />
 
       <div className="mx-auto mt-8 grid w-full max-w-6xl gap-6 px-4 lg:grid-cols-[1.05fr_0.95fr]">
-        <TarjetaRetro titulo="Configuración del Pedido — Taller UTP">
+        <TarjetaRetro titulo="Datos del trabajo">
           <div className="grid gap-4">
             <div>
               <label className="etiqueta" htmlFor="ref">
@@ -186,7 +245,7 @@ export default function App() {
             }
           >
             {!r.cabe ? (
-              <p className="neu-inset rounded-2xl p-4 text-sm font-medium text-[var(--coral)]">
+              <p className="rounded-2xl p-4 text-sm font-medium text-[var(--coral)] neu-inset">
                 La pieza de {cotizacion.anchoPieza}×{cotizacion.altoPieza} cm no cabe en este
                 pliego. Reduce el tamaño o elige otro material.
               </p>
@@ -244,21 +303,22 @@ export default function App() {
                   </div>
                 </div>
 
-                {cotizacion.cantidad >= 200 && (
-                  <div className="neu-inset rounded-2xl p-3 text-center border border-[var(--esmeralda)]/40">
-                    <p className="font-mono text-xs font-semibold text-[var(--esmeralda)]">
-                      ✨ ¡Aplica tarifa preferencial por volumen (+200 uds)!
-                    </p>
+                <div className="flex flex-col gap-3 print:hidden">
+                  <button
+                    className="btn-neu btn-cian w-full"
+                    onClick={guardarEnSupabase}
+                    disabled={guardando}
+                  >
+                    {guardando ? "Guardando en Supabase..." : "💾 Guardar cotización en la nube"}
+                  </button>
+                  <div className="flex flex-wrap gap-3">
+                    <button className="btn-neu flex-1" onClick={copiar}>
+                      {copiado ? "¡Resumen copiado!" : "Copiar para WhatsApp"}
+                    </button>
+                    <button className="btn-neu" onClick={() => window.print()}>
+                      Imprimir
+                    </button>
                   </div>
-                )}
-
-                <div className="flex flex-wrap gap-3 print:hidden">
-                  <button className="btn-neu btn-cian flex-1" onClick={copiar}>
-                    {copiado ? "¡Resumen copiado!" : "📲 Enviar Cotización por WhatsApp"}
-                  </button>
-                  <button className="btn-neu" onClick={() => window.print()}>
-                    Descargar PDF / Imprimir
-                  </button>
                 </div>
               </div>
             )}
@@ -281,6 +341,29 @@ export default function App() {
             </div>
           </TarjetaRetro>
         </div>
+      </div>
+
+      {/* Historial en vivo desde Supabase */}
+      <div className="mx-auto mt-10 w-full max-w-6xl px-4">
+        <TarjetaRetro titulo="Historial guardado en Supabase (En vivo)">
+          <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+            {historial.length === 0 ? (
+              <p className="text-sm text-foreground/50">Cargando cotizaciones desde Supabase...</p>
+            ) : (
+              historial.map((item) => (
+                <div key={item.id} className="neu-chip rounded-xl p-3">
+                  <p className="font-bold text-sm truncate">{item.referencia}</p>
+                  <p className="text-xs text-foreground/60">
+                    {item.cantidad} piezas · {item.ancho_cm}x{item.alto_cm} cm
+                  </p>
+                  <p className="font-mono text-base font-bold text-[var(--esmeralda)] mt-2">
+                    {cop(item.precio_final)}
+                  </p>
+                </div>
+              ))
+            )}
+          </div>
+        </TarjetaRetro>
       </div>
     </main>
   );
