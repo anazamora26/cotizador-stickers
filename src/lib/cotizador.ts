@@ -1,6 +1,6 @@
-import { useState, useEffect } from "react";
+import { useSyncExternalStore } from "react";
 
-export type Material = {
+export interface Material {
   id: string;
   nombre: string;
   anchoCm: number;
@@ -18,6 +18,20 @@ export type Cotizacion = {
   margen: number;
   forma: "rectangulo" | "circulo";
 };
+
+export interface ResultadoCotizacion {
+  cabe: boolean;
+  piezasPorPliego: number;
+  columnas: number;
+  filas: number;
+  orientacion: "normal" | "rotado";
+  pliegos: number;
+  desperdicio: number;
+  costoTotal: number;
+  costoUnitario: number;
+  precioFinal: number;
+  precioUnitario: number;
+}
 
 export const materialesIniciales: Material[] = [
   { id: "vinilo-mate", nombre: "Vinilo Adhesivo Mate 33x48cm", anchoCm: 33, altoCm: 48, costoPliego: 2500 },
@@ -39,60 +53,85 @@ export const cotizacionInicial: Cotizacion = {
 const STORAGE_MATS_KEY = "cotizasticker_mats_v2";
 const STORAGE_COT_KEY = "cotizasticker_cot_v2";
 
-function leerLocalStorage<T>(key: string, valorDefecto: T): T {
-  if (typeof window === "undefined") return valorDefecto;
+function cargarMateriales(): Material[] {
+  if (typeof window === "undefined") return materialesIniciales;
   try {
-    const raw = localStorage.getItem(key);
-    return raw ? JSON.parse(raw) : valorDefecto;
+    const guardado = localStorage.getItem(STORAGE_MATS_KEY);
+    if (!guardado) return materialesIniciales;
+    const datos = JSON.parse(guardado);
+    return Array.isArray(datos) && datos.length > 0 ? datos : materialesIniciales;
   } catch {
-    return valorDefecto;
+    return materialesIniciales;
   }
 }
 
-let estadoGlobal = {
-  materiales: leerLocalStorage<Material[]>(STORAGE_MATS_KEY, materialesIniciales),
-  cotizacion: leerLocalStorage<Cotizacion>(STORAGE_COT_KEY, cotizacionInicial),
-};
+function cargarCotizacion(): Cotizacion {
+  if (typeof window === "undefined") return cotizacionInicial;
+  try {
+    const guardado = localStorage.getItem(STORAGE_COT_KEY);
+    if (!guardado) return cotizacionInicial;
+    return { ...cotizacionInicial, ...JSON.parse(guardado) };
+  } catch {
+    return cotizacionInicial;
+  }
+}
+
+let materialesMemoria: Material[] = cargarMateriales();
+let cotizacionMemoria: Cotizacion = cargarCotizacion();
+
+let estadoCache = { materiales: materialesMemoria, cotizacion: cotizacionMemoria };
 
 const listeners = new Set<() => void>();
+function notify() {
+  estadoCache = { materiales: materialesMemoria, cotizacion: cotizacionMemoria };
+  listeners.forEach((listener) => listener());
+}
 
-function emitirCambio() {
-  listeners.forEach((l) => l());
+export function getEstado() {
+  return estadoCache;
+}
+
+export function subscribe(listener: () => void) {
+  listeners.add(listener);
+  return () => listeners.delete(listener);
+}
+
+const estadoServidor = {
+  materiales: materialesIniciales,
+  cotizacion: cotizacionInicial,
+};
+
+function getEstadoServidor() {
+  return estadoServidor;
 }
 
 export function useTaller() {
-  const [estado, setEstado] = useState(estadoGlobal);
-
-  useEffect(() => {
-    const listener = () => setEstado({ ...estadoGlobal });
-    listeners.add(listener);
-    return () => {
-      listeners.delete(listener);
-    };
-  }, []);
-
-  return estado;
+  return useSyncExternalStore(subscribe, getEstado, getEstadoServidor);
 }
 
-export function actualizarCotizacion(parcial: Partial<Cotizacion>) {
-  estadoGlobal.cotizacion = { ...estadoGlobal.cotizacion, ...parcial };
+export function actualizarCotizacion(cambiosCotizacion: Partial<Cotizacion>) {
+  cotizacionMemoria = { ...cotizacionMemoria, ...cambiosCotizacion };
   try {
-    localStorage.setItem(STORAGE_COT_KEY, JSON.stringify(estadoGlobal.cotizacion));
-  } catch {}
-  emitirCambio();
+    localStorage.setItem(STORAGE_COT_KEY, JSON.stringify(cotizacionMemoria));
+  } catch (error) {
+    console.warn("No se pudo guardar la cotización en el almacenamiento local:", error);
+  }
+  notify();
 }
 
-export function guardarMateriales(nuevos: Material[]) {
-  estadoGlobal.materiales = nuevos;
+export function guardarMateriales(materialesActualizados: Material[]) {
+  materialesMemoria = materialesActualizados;
   try {
-    localStorage.setItem(STORAGE_MATS_KEY, JSON.stringify(nuevos));
-  } catch {}
-  emitirCambio();
+    localStorage.setItem(STORAGE_MATS_KEY, JSON.stringify(materialesActualizados));
+  } catch (error) {
+    console.warn("No se pudieron guardar los materiales en el almacenamiento local:", error);
+  }
+  notify();
 }
 
-export function materialActivo(materiales: Material[], id: string): Material {
+export function materialActivo(materiales: Material[], materialId: string): Material {
   if (!Array.isArray(materiales) || materiales.length === 0) return materialesIniciales[0];
-  return materiales.find((m) => m.id === id) || materiales[0];
+  return materiales.find((material) => material.id === materialId) || materiales[0];
 }
 
 export function cop(valor: number): string {
@@ -103,8 +142,8 @@ export function cop(valor: number): string {
   }).format(valor || 0);
 }
 
-export function calcular(input: Cotizacion, material: Material) {
-  if (!material || !input) {
+export function calcular(cotizacion: Cotizacion, material: Material): ResultadoCotizacion {
+  if (!material || !cotizacion) {
     return {
       cabe: false,
       piezasPorPliego: 0,
@@ -117,61 +156,59 @@ export function calcular(input: Cotizacion, material: Material) {
       costoUnitario: 0,
       precioFinal: 0,
       precioUnitario: 0,
-      piezaAncho: 5,
-      piezaAlto: 5,
     };
   }
 
-  const sangria = (Number(input.sangriaMm) || 0) / 10;
-  const anchoPieza = Math.max(0.5, Number(input.anchoPieza) || 1);
-  const altoPieza = Math.max(0.5, Number(input.altoPieza) || 1);
+  const sangriaCm = (Number(cotizacion.sangriaMm) || 0) / 10;
+  const anchoPiezaCm = Math.max(0.5, Number(cotizacion.anchoPieza) || 1);
+  const altoPiezaCm = Math.max(0.5, Number(cotizacion.altoPieza) || 1);
 
-  const anchoEfectivo = anchoPieza + sangria * 2;
-  const altoEfectivo = altoPieza + sangria * 2;
+  const anchoEfectivoCm = anchoPiezaCm + sangriaCm * 2;
+  const altoEfectivoCm = altoPiezaCm + sangriaCm * 2;
 
-  const matAncho = Number(material.anchoCm) || 33;
-  const matAlto = Number(material.altoCm) || 48;
+  const anchoMaterialCm = Number(material.anchoCm) || 33;
+  const altoMaterialCm = Number(material.altoCm) || 48;
 
-  const colsN = Math.floor(matAncho / anchoEfectivo);
-  const filasN = Math.floor(matAlto / altoEfectivo);
-  const totalN = Math.max(0, colsN * filasN);
+  const columnasOrientacionNormal = Math.floor(anchoMaterialCm / anchoEfectivoCm);
+  const filasOrientacionNormal = Math.floor(altoMaterialCm / altoEfectivoCm);
+  const piezasOrientacionNormal = Math.max(0, columnasOrientacionNormal * filasOrientacionNormal);
 
-  const colsR = Math.floor(matAncho / altoEfectivo);
-  const filasR = Math.floor(matAlto / anchoEfectivo);
-  const totalR = Math.max(0, colsR * filasR);
+  const columnasOrientacionRotada = Math.floor(anchoMaterialCm / altoEfectivoCm);
+  const filasOrientacionRotada = Math.floor(altoMaterialCm / anchoEfectivoCm);
+  const piezasOrientacionRotada = Math.max(0, columnasOrientacionRotada * filasOrientacionRotada);
 
-  const esRotado = totalR > totalN;
-  const piezasPorPliego = esRotado ? totalR : totalN;
-  const columnas = esRotado ? colsR : colsN;
-  const filas = esRotado ? filasR : filasN;
+  const orientacionRotada = piezasOrientacionRotada > piezasOrientacionNormal;
+  const piezasPorPliego = orientacionRotada ? piezasOrientacionRotada : piezasOrientacionNormal;
+  const columnas = orientacionRotada ? columnasOrientacionRotada : columnasOrientacionNormal;
+  const filas = orientacionRotada ? filasOrientacionRotada : filasOrientacionNormal;
   const cabe = piezasPorPliego > 0;
 
-  const cantidad = Math.max(1, Number(input.cantidad) || 1);
+  const cantidad = Math.max(1, Number(cotizacion.cantidad) || 1);
   const pliegos = cabe ? Math.ceil(cantidad / piezasPorPliego) : 0;
   const costoTotal = pliegos * (Number(material.costoPliego) || 0);
   const costoUnitario = cantidad > 0 ? costoTotal / cantidad : 0;
 
-  const margen = Number(input.margen) || 0;
+  const margen = Number(cotizacion.margen) || 0;
   const precioFinal = costoTotal * (1 + margen / 100);
   const precioUnitario = cantidad > 0 ? precioFinal / cantidad : 0;
 
-  const areaTotal = matAncho * matAlto;
-  const areaUsada = anchoEfectivo * altoEfectivo * piezasPorPliego;
-  const desperdicio = areaTotal > 0 && cabe ? Math.max(0, ((areaTotal - areaUsada) / areaTotal) * 100) : 100;
+  const areaTotalMaterial = anchoMaterialCm * altoMaterialCm;
+  const areaOcupadaPorPiezas = anchoEfectivoCm * altoEfectivoCm * piezasPorPliego;
+  const desperdicio = areaTotalMaterial > 0 && cabe
+    ? Math.max(0, ((areaTotalMaterial - areaOcupadaPorPiezas) / areaTotalMaterial) * 100)
+    : 100;
 
   return {
     cabe,
     piezasPorPliego,
     columnas,
     filas,
-    orientacion: esRotado ? ("rotado" as const) : ("normal" as const),
+    orientacion: orientacionRotada ? ("rotado" as const) : ("normal" as const),
     pliegos,
     desperdicio,
     costoTotal,
     costoUnitario,
     precioFinal,
     precioUnitario,
-    piezaAncho: esRotado ? altoPieza : anchoPieza,
-    piezaAlto: esRotado ? anchoPieza : altoPieza,
   };
 }

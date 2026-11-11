@@ -1,12 +1,14 @@
+import type { Cotizacion, Material, ResultadoCotizacion } from "../lib/cotizador";
+
 export function PliegoSVG({
   material,
   cotizacion,
   resultado,
   piezasVisibles = 0,
 }: {
-  material: any;
-  cotizacion: any;
-  resultado: any;
+  material: Material;
+  cotizacion: Cotizacion;
+  resultado: ResultadoCotizacion;
   piezasVisibles?: number;
 }) {
   if (!material || !cotizacion || !resultado || !resultado.cabe) {
