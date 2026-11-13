@@ -20,16 +20,20 @@ interface VistaHistorialProps {
   cotizaciones: CotizacionGuardada[];
   cargando: boolean;
   error: string | null;
+  idEliminando: CotizacionGuardada["id"] | null;
   onRecargar: () => void;
   onEditar: (cotizacion: CotizacionGuardada) => void;
+  onEliminar: (cotizacion: CotizacionGuardada) => void;
 }
 
 export function VistaHistorial({
   cotizaciones,
   cargando,
   error,
+  idEliminando,
   onRecargar,
   onEditar,
+  onEliminar,
 }: VistaHistorialProps) {
   return (
     <div className="mx-auto mt-8 w-full max-w-5xl px-4">
@@ -81,14 +85,29 @@ export function VistaHistorial({
                     {new Date(cotizacion.created_at).toLocaleString("es-CO")}
                   </time>
                 )}
-                <button
-                  type="button"
-                  className="btn-neu mt-3 w-full"
-                  onClick={() => onEditar(cotizacion)}
-                  disabled={cotizacion.estado === "eliminada"}
-                >
-                  {cotizacion.estado === "eliminada" ? "Cotización eliminada" : "Editar"}
-                </button>
+                {cotizacion.estado === "eliminada" ? (
+                  <p className="mt-3 text-center text-xs text-foreground/50">
+                    Cotización eliminada
+                  </p>
+                ) : (
+                  <div className="mt-3 grid grid-cols-2 gap-2">
+                    <button
+                      type="button"
+                      className="btn-neu"
+                      onClick={() => onEditar(cotizacion)}
+                    >
+                      Editar
+                    </button>
+                    <button
+                      type="button"
+                      className="btn-neu btn-coral bg-[var(--coral)] text-xs text-white"
+                      onClick={() => onEliminar(cotizacion)}
+                      disabled={idEliminando === cotizacion.id}
+                    >
+                      {idEliminando === cotizacion.id ? "Eliminando..." : "Eliminar"}
+                    </button>
+                  </div>
+                )}
               </article>
             ))}
           </div>

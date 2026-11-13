@@ -15,7 +15,13 @@ export interface CotizacionHistorialIA {
 
 type ResultadoAsesor = ResultadoCotizacion & { material: Material };
 
-const ai = new GoogleGenAI({ apiKey: import.meta.env.VITE_GEMINI_API_KEY });
+function crearClienteGemini() {
+  const apiKey = import.meta.env.VITE_GEMINI_API_KEY;
+  if (!apiKey?.trim()) {
+    throw new Error("Falta configurar VITE_GEMINI_API_KEY.");
+  }
+  return new GoogleGenAI({ apiKey });
+}
 
 const SYSTEM_INSTRUCTION = `Eres un asesor técnico y de optimización de producción especializado en corte, impresión y talleres de manufactura gráfica.
 
@@ -52,6 +58,7 @@ export async function consultarAsesorTaller(
   historialReciente: CotizacionHistorialIA[] = [],
 ) {
   try {
+    const ai = crearClienteGemini();
     const { material } = r;
     const response = await ai.models.generateContent({
       model: "gemini-3.8-flash",
@@ -114,6 +121,9 @@ export async function consultarAsesorTaller(
     return response.text;
   } catch (error) {
     console.error("Error al consultar el Asesor:", error);
+    if (error instanceof Error && error.message === "Falta configurar VITE_GEMINI_API_KEY.") {
+      throw error;
+    }
     const apiError = typeof error === "object" && error !== null ? error : null;
     const codigo = apiError && "code" in apiError ? apiError.code : undefined;
     const estado = apiError && "status" in apiError ? apiError.status : undefined;

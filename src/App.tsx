@@ -16,7 +16,6 @@ import {
    materialActivo,
    useTaller,
    type Cotizacion,
-   type Material,
 } from "./lib/cotizador";
 
 export default function App() {
@@ -44,6 +43,7 @@ export default function App() {
    const [historialSesionId, setHistorialSesionId] = useState<string | null>(null);
    const [errorHistorial, setErrorHistorial] = useState<string | null>(null);
    const [guardandoCotizacion, setGuardandoCotizacion] = useState(false);
+   const [idEliminando, setIdEliminando] = useState<CotizacionGuardada["id"] | null>(null);
    const [mensajeGuardado, setMensajeGuardado] = useState<string | null>(null);
    const [idEdicion, setIdEdicion] = useState<CotizacionGuardada["id"] | null>(null);
    const historialParaIA = useMemo(
@@ -170,8 +170,33 @@ export default function App() {
      }
    };
 
-   const handleActualizarMaterial = (matActualizado: Material) => {
-     guardarMateriales(materiales.map((m) => (m.id === matActualizado.id ? matActualizado : m)));
+   const handleEliminarCotizacion = async (cotizacionGuardada: CotizacionGuardada) => {
+     if (!session) return;
+     if (!window.confirm(`¿Marcar "${cotizacionGuardada.referencia || "Sin título"}" como eliminada?`)) {
+       return;
+     }
+
+     setIdEliminando(cotizacionGuardada.id);
+     setErrorHistorial(null);
+     try {
+       const { data, error } = await supabase
+         .from("cotizaciones")
+         .update({ estado: "eliminada", user_id: session.user.id })
+         .eq("id", cotizacionGuardada.id)
+         .eq("user_id", session.user.id)
+         .select("id")
+         .maybeSingle();
+
+       if (error) throw error;
+       if (!data) throw new Error("No se encontró la cotización para eliminar.");
+       await handleRecargarHistorial();
+     } catch (error: unknown) {
+       setErrorHistorial(
+         error instanceof Error ? error.message : "No se pudo eliminar la cotización.",
+       );
+     } finally {
+       setIdEliminando(null);
+     }
    };
 
    const handleGuardarCotizacion = async () => {
@@ -179,14 +204,51 @@ export default function App() {
        setMensajeGuardado("Inicia sesión para guardar una cotización.");
        return;
      }
-     if (!r.cabe) return;
+     const referencia = cotizacion.referencia.trim();
+     if (!referencia) {
+       setMensajeGuardado("Escribe una referencia para la cotización.");
+       return;
+     }
+     if (
+       !Number.isFinite(cotizacion.anchoPieza) || cotizacion.anchoPieza < 0.5 ||
+       !Number.isFinite(cotizacion.altoPieza) || cotizacion.altoPieza < 0.5
+     ) {
+       setMensajeGuardado("El ancho y el alto deben ser de al menos 0,5 cm.");
+       return;
+     }
+     if (!Number.isInteger(cotizacion.cantidad) || cotizacion.cantidad <= 0) {
+       setMensajeGuardado("La cantidad debe ser un número entero mayor a cero.");
+       return;
+     }
+     if (!Number.isFinite(cotizacion.sangriaMm) || cotizacion.sangriaMm <= 0) {
+       setMensajeGuardado("Indica una sangría mayor a cero milímetros.");
+       return;
+     }
+     if (!Number.isFinite(cotizacion.margen) || cotizacion.margen <= 0) {
+       setMensajeGuardado("La ganancia debe ser un valor mayor a cero.");
+       return;
+     }
+     if (
+       !material.nombre.trim() ||
+       !Number.isFinite(material.anchoCm) || material.anchoCm <= 0 ||
+       !Number.isFinite(material.altoCm) || material.altoCm <= 0 ||
+       !Number.isFinite(material.costoPliego) || material.costoPliego <= 0
+     ) {
+       setMensajeGuardado("Selecciona un material con dimensiones y costo válidos.");
+       return;
+     }
+     if (!r.cabe || !Number.isFinite(r.precioFinal) || r.precioFinal <= 0) {
+       setMensajeGuardado("La pieza no cabe en el pliego o no se pudo calcular un precio válido.");
+       return;
+     }
+
      setGuardandoCotizacion(true);
      setMensajeGuardado(null);
      setErrorHistorial(null);
      try {
        const datosGuardados = {
          user_id: session.user.id,
-         referencia: cotizacion.referencia || "Sin título",
+         referencia,
          material_id: material.id,
          ancho_cm: cotizacion.anchoPieza,
          alto_cm: cotizacion.altoPieza,
@@ -359,7 +421,7 @@ export default function App() {
       {vistaActiva === "materiales" && (
         <VistaMateriales
           materiales={materiales}
-          onActualizarMaterial={handleActualizarMaterial}
+          onGuardarMateriales={guardarMateriales}
         />
       )}
 
@@ -368,22 +430,74 @@ export default function App() {
            cotizaciones={historialSesionId === session.user.id ? cotizacionesGuardadas : []}
            cargando={cargandoHistorial || historialSesionId !== session.user.id}
            error={historialSesionId === session.user.id ? errorHistorial : null}
+          idEliminando={idEliminando}
           onRecargar={() => void handleRecargarHistorial()}
           onEditar={cargarCotizacionEnFormulario}
+          onEliminar={(guardada) => void handleEliminarCotizacion(guardada)}
         />
       )}
 
       {/* Vista previa ampliada */}
       {vistaActiva === "visualizador" && (
-        <div className="mx-auto mt-8 w-full max-w-5xl px-4">
-          <TarjetaRetro titulo={`Vista 2D — ${material.nombre}`}>
-            <div className="neu-inset mx-auto h-[60vh] min-h-[400px] w-full rounded-2xl p-4">
-              <PliegoSVG
-                material={material}
-                cotizacion={cotizacion}
-                resultado={r}
-                piezasVisibles={Math.min(r.piezasPorPliego, cotizacion.cantidad)}
+        <div className="mx-auto mt-8 grid w-full max-w-6xl gap-6 px-4 lg:grid-cols-[0.85fr_1.15fr]">
+          <TarjetaRetro titulo="Ficha del pliego">
+            <dl className="divide-y divide-foreground/10">
+              <FilaDetalle
+                etiqueta="Trabajo"
+                valor={`${cotizacion.cantidad} ${cotizacion.referencia || "stickers"}`}
               />
+              <FilaDetalle etiqueta="Material" valor={material.nombre} />
+              <FilaDetalle
+                etiqueta="Pliego"
+                valor={`${material.anchoCm} cm × ${material.altoCm} cm`}
+              />
+              <FilaDetalle
+                etiqueta="Pieza"
+                valor={`${cotizacion.anchoPieza} × ${cotizacion.altoPieza} cm (${cotizacion.forma === "circulo" ? "circular" : "rectangular"})`}
+              />
+              <FilaDetalle etiqueta="Sangría" valor={`${cotizacion.sangriaMm} mm`} />
+              <FilaDetalle
+                etiqueta="Grilla"
+                valor={r.cabe ? `${r.columnas} col × ${r.filas} fil` : "No cabe en el pliego"}
+              />
+              <FilaDetalle
+                etiqueta="Por pliego"
+                valor={r.cabe ? `${r.piezasPorPliego} piezas` : "—"}
+              />
+              <FilaDetalle
+                etiqueta="Aprovechamiento"
+                valor={r.cabe ? `${(100 - r.desperdicio).toFixed(1)}%` : "—"}
+              />
+              <FilaDetalle
+                etiqueta="Pliegos requeridos"
+                valor={r.cabe ? `${r.pliegos}` : "—"}
+              />
+              <FilaDetalle etiqueta="Costo producción" valor={cop(r.costoTotal)} />
+              <FilaDetalle etiqueta="Precio final" valor={cop(r.precioFinal)} destacado />
+            </dl>
+          </TarjetaRetro>
+
+          <TarjetaRetro
+            titulo="Plano de corte a escala"
+            acciones={
+              <span className="font-mono text-[0.58rem] uppercase tracking-widest text-foreground/45">
+                Escala proporcional
+              </span>
+            }
+          >
+            <div className="neu-inset mx-auto grid h-[50vh] min-h-[360px] w-full place-items-center rounded-2xl p-4 sm:h-[60vh] sm:min-h-[400px]">
+              {r.cabe ? (
+                <PliegoSVG
+                  material={material}
+                  cotizacion={cotizacion}
+                  resultado={r}
+                  piezasVisibles={Math.min(r.piezasPorPliego, cotizacion.cantidad)}
+                />
+              ) : (
+                <p className="text-center text-sm text-[var(--coral)]">
+                  La pieza no cabe en este pliego. Reduce sus medidas o selecciona otro material.
+                </p>
+              )}
             </div>
           </TarjetaRetro>
         </div>
@@ -493,7 +607,7 @@ export default function App() {
                   <input
                     id="sangria"
                     type="number"
-                    min={0}
+                    min={0.1}
                     step={0.5}
                     className="campo font-mono"
                     value={cotizacion.sangriaMm}
@@ -649,6 +763,29 @@ function Dato({ titulo, valor, nota }: { titulo: string; valor: string; nota: st
       <p className="etiqueta">{titulo}</p>
       <p className="font-mono text-2xl font-bold text-[var(--cian)]">{valor}</p>
       <p className="mt-1 text-xs text-foreground/50">{nota}</p>
+    </div>
+  );
+}
+
+function FilaDetalle({
+  etiqueta,
+  valor,
+  destacado = false,
+}: {
+  etiqueta: string;
+  valor: string;
+  destacado?: boolean;
+}) {
+  return (
+    <div className="grid grid-cols-[minmax(6.5rem,0.7fr)_minmax(0,1.3fr)] gap-3 py-3">
+      <dt className="etiqueta mb-0">{etiqueta}</dt>
+      <dd
+        className={`break-words text-right font-mono text-sm ${
+          destacado ? "font-bold text-[var(--esmeralda)]" : "text-foreground"
+        }`}
+      >
+        {valor}
+      </dd>
     </div>
   );
 }
